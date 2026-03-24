@@ -1,56 +1,79 @@
 import streamlit as st
+import sqlite3
 import pandas as pd
 from datetime import datetime
-import os
+
+# --- DB SETUP ---
+conn = sqlite3.connect("health.db", check_same_thread=False)
+c = conn.cursor()
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    username TEXT
+)
+""")
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS records (
+    username TEXT,
+    weight REAL,
+    goal TEXT,
+    date TEXT
+)
+""")
+
+conn.commit()
 
 st.set_page_config(page_title="Health Companion", layout="centered")
 
 st.title("🧠 Personal Health Companion")
 
-# --- INPUT ---
-name = st.text_input("Name")
-weight = st.number_input("Weight (kg)", 30.0, 150.0)
-height = st.number_input("Height (cm)", 120.0, 220.0)
-goal = st.selectbox("Goal", ["Gain Muscle", "Lose Weight", "Maintain"])
+# --- LOGIN ---
+st.sidebar.header("Login")
+username = st.sidebar.text_input("Enter Username")
 
-file = "data.csv"
+if username:
 
-# --- BUTTON ---
-if st.button("Save & Generate Plan"):
+    st.sidebar.success(f"Logged in as {username}")
 
-    # Save data
-    new_data = pd.DataFrame([{
-        "name": name,
-        "weight": weight,
-        "goal": goal,
-        "date": datetime.now()
-    }])
+    # --- INPUT ---
+    weight = st.number_input("Weight (kg)", 30.0, 150.0)
+    height = st.number_input("Height (cm)", 120.0, 220.0)
+    goal = st.selectbox("Goal", ["Gain Muscle", "Lose Weight", "Maintain"])
 
-    new_data.to_csv(file, mode='a', header=False, index=False)
+    if st.button("Save & Generate Plan"):
 
-    # BMI
-    bmi = weight / ((height/100) ** 2)
+        # Save data
+        c.execute("INSERT INTO records VALUES (?, ?, ?, ?)",
+                  (username, weight, goal, str(datetime.now())))
+        conn.commit()
 
-    st.subheader("📊 Health Report")
-    st.write(f"BMI: {bmi:.1f}")
+        # BMI
+        bmi = weight / ((height/100) ** 2)
 
-    if bmi < 18.5:
-        st.warning("Underweight")
-    elif bmi < 25:
-        st.success("Normal")
-    else:
-        st.error("Overweight")
+        st.subheader("📊 Health Report")
+        st.write(f"BMI: {bmi:.1f}")
 
-    # Protein
-    protein = weight * 1.5
-    st.write(f"Protein Needed: {protein:.1f}g")
+        if bmi < 18.5:
+            st.warning("Underweight")
+        elif bmi < 25:
+            st.success("Normal")
+        else:
+            st.error("Overweight")
 
-# --- HISTORY ---
-st.markdown("## 📈 Progress Tracking")
+        # Protein
+        protein = weight * 1.5
+        st.write(f"Protein Needed: {protein:.1f}g")
 
-if os.path.exists(file):
-    df = pd.read_csv(file)
+    # --- USER HISTORY ---
+    st.markdown("## 📈 Your Progress")
+
+    df = pd.read_sql_query(
+        f"SELECT * FROM records WHERE username='{username}'", conn)
 
     if not df.empty:
         st.line_chart(df["weight"])
         st.dataframe(df)
+
+else:
+    st.warning("Please enter a username to continue")
